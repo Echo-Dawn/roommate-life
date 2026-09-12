@@ -141,6 +141,18 @@ export function applyAction(state: AppState, action: Action): ActionResult {
       if (!state.members.some((m) => m.id === input.payerId)) return fail(state, '请选择付款人');
       if (input.participantIds.length === 0) return fail(state, '参与分摊的成员不能为空');
 
+      // 关联补货记录：必须存在，且不能已经有另一笔「有效」账单挂在它上面。
+      // 这里做业务层校验，不依赖界面按钮是否隐藏；作废后的旧账单不再算有效关联。
+      const linkedRestockId = input.linkedRestockId ?? null;
+      if (linkedRestockId) {
+        const record = state.restocks.find((r) => r.id === linkedRestockId);
+        if (!record) return fail(state, '关联的补货记录不存在');
+        const existing = state.expenses.find(
+          (e) => e.linkedRestockId === linkedRestockId && !e.voided,
+        );
+        if (existing) return fail(state, '该补货记录已关联一笔有效费用，不能重复记账');
+      }
+
       const order = state.members.map((m) => m.id);
       const participantIds = stableSort(input.participantIds, order);
 
@@ -179,7 +191,7 @@ export function applyAction(state: AppState, action: Action): ActionResult {
         voided: false,
         voidedAt: null,
         voidedBy: null,
-        linkedRestockId: input.linkedRestockId ?? null,
+        linkedRestockId,
       };
 
       const restocks = input.linkedRestockId

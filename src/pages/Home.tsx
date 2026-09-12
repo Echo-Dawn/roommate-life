@@ -27,7 +27,7 @@ import { addDays, formatDateCN, startOfWeek, todayKey, weekdayLabel, weekdayOf }
 import { buildTasks } from '../domain/chores';
 import { openDisputes, sharesAwaitingMyConfirm, summarizeFor } from '../domain/expenses';
 import { needsMyConfirmation, pendingVersion } from '../domain/pact';
-import { sortByUrgency, supplyStatus } from '../domain/supplies';
+import { sortByUrgency, supplyRuleHint, supplyStatus } from '../domain/supplies';
 import type { ChoreTask } from '../domain/types';
 
 export default function HomePage() {
@@ -121,7 +121,12 @@ export default function HomePage() {
       </div>
 
       <div className="grid grid--3">
-        <div className="stat">
+        <button
+          type="button"
+          className="stat stat--link"
+          onClick={() => navigate('/ledger', { state: { filter: { mine: 'unpaid' } } })}
+          aria-label={`我应付（待付款）${(summary.payableCents / 100).toFixed(2)} 元，查看待付款账单`}
+        >
           <div className="stat__label">我应付（待付款）</div>
           <div className="stat__value" style={{ color: 'var(--accent)' }}>
             <Amount cents={summary.payableCents} />
@@ -129,10 +134,16 @@ export default function HomePage() {
           <div className="stat__foot">
             {summary.payableDisputedCents > 0
               ? `其中 ${(summary.payableDisputedCents / 100).toFixed(2)} 元有异议，暂停付款`
-              : '点开账本可逐笔标记付款'}
+              : '尚未标记付款的部分'}
           </div>
-        </div>
-        <div className="stat">
+          <span className="stat__more">查看我的待付款 →</span>
+        </button>
+        <button
+          type="button"
+          className="stat stat--link"
+          onClick={() => navigate('/ledger', { state: { filter: { mine: 'receivable' } } })}
+          aria-label={`我应收（未结清）${(summary.receivableCents / 100).toFixed(2)} 元，查看我垫付的待收款账单`}
+        >
           <div className="stat__label">我应收（未结清）</div>
           <div className="stat__value" style={{ color: 'var(--primary)' }}>
             <Amount cents={summary.receivableCents} />
@@ -140,13 +151,19 @@ export default function HomePage() {
           <div className="stat__foot">
             其中待我确认 <Amount cents={summary.awaitingConfirmCents} />
           </div>
-        </div>
+          <span className="stat__more">查看我垫付待收款 →</span>
+        </button>
         <div className="stat">
-          <div className="stat__label">待我处理</div>
-          <div className="stat__value">{toConfirm.length + incomingSwaps.length + (pactNeedsMe ? 1 : 0)}</div>
+          <div className="stat__label">待我确认</div>
+          <div className="stat__value">
+            {toConfirm.length + incomingSwaps.length + (pactNeedsMe ? 1 : 0)}
+          </div>
           <div className="stat__foot">
             收款确认 {toConfirm.length} · 换班 {incomingSwaps.length} · 公约{' '}
             {pactNeedsMe ? 1 : 0}
+          </div>
+          <div className="stat__scope">
+            只统计需要我确认的事项；我的待付款与值日在上方卡片和「今日值日」中
           </div>
         </div>
       </div>
@@ -276,8 +293,8 @@ export default function HomePage() {
             ))}
           </div>
         )}
-        <div className="tiny muted" style={{ marginTop: 8 }}>
-          余量 ≤ 2 视为「快用完」，归零为「已用完」。
+        <div className="small muted" style={{ marginTop: 8 }}>
+          {supplyRuleHint()}
         </div>
       </div>
 
@@ -286,6 +303,10 @@ export default function HomePage() {
           <div className="card__title">
             <IconCheck /> 待我确认
           </div>
+          <span className="card__hint">只含收款、换班、公约三类确认</span>
+        </div>
+        <div className="small muted" style={{ marginBottom: 10 }}>
+          这里只统计需要你确认的事项；我的待付款看上方金额卡，我的值日看「今日值日」。侧栏数字则是各页全部待办（含付款与值日）。
         </div>
 
         {toConfirm.length === 0 && incomingSwaps.length === 0 && !pactNeedsMe ? (

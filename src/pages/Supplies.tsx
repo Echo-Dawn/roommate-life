@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAction, useAppState } from '../store/hooks';
 import { getSnapshot } from '../store/store';
@@ -13,10 +13,25 @@ import {
 } from '../ui/primitives';
 import { ExpenseFormModal } from '../features/expenses/ExpenseForm';
 import { IconCheck, IconDoc, IconPlus } from '../ui/Icon';
-import { formatDateCN, todayKey } from '../domain/dateKey';
-import { canCancelClaim, canClaim, canCompleteRestock, sortByUrgency, supplyStatus } from '../domain/supplies';
+import { dateKeyOf, formatDateCN, todayKey } from '../domain/dateKey';
+import {
+  canCancelClaim,
+  canClaim,
+  canCompleteRestock,
+  sortByUrgency,
+  supplyRuleHint,
+  supplyStatus,
+} from '../domain/supplies';
 import type { SupplyItem } from '../domain/types';
 import type { SupplyInput } from '../store/reducer';
+
+/** 补记/即时记账的预填信息，始终来自补货记录本身而不是当前切换的身份 */
+interface LinkDraft {
+  restockId: string | null;
+  name: string;
+  payerId: string;
+  date: string;
+}
 
 export default function SuppliesPage() {
   const state = useAppState();
@@ -26,10 +41,7 @@ export default function SuppliesPage() {
   const [restockDone, setRestockDone] = useState<{ item: SupplyItem; restockId: string | null } | null>(
     null,
   );
-  const [linkRestock, setLinkRestock] = useState<{
-    item: SupplyItem;
-    restockId: string | null;
-  } | null>(null);
+  const [linkRestock, setLinkRestock] = useState<LinkDraft | null>(null);
   const [viewExpenseId, setViewExpenseId] = useState<string | null>(null);
   const [stockDraft, setStockDraft] = useState<Record<string, string>>({});
 
@@ -201,70 +213,89 @@ export default function SuppliesPage() {
           <div className="list">
             {recentRestocks.map((record) => {
               const expense = linkedExpense(record.id);
+              const doneDate = dateKeyOf(record.completedAt);
               return (
-                <>
-                  <div className="item" key={record.id}>
+                <Fragment key={record.id}>
+                  <div className="item">
                     <Avatar text={initialOf(record.memberId)} />
-                  <div className="item__main">
-                    <div className="item__title">{record.itemName}</div>
-                    <div className="item__meta">
-                      {nameOf(record.memberId)} · {formatDateCN(record.completedAt.slice(0, 10))}
+                    <div className="item__main">
+                      <div className="item__title">{record.itemName}</div>
+                      <div className="item__meta">
+                        {nameOf(record.memberId)} 补货 · {formatDateCN(doneDate)}
+                      </div>
+                    </div>
+                    <div className="item__side">
+                      {expense ? (
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          aria-expanded={viewExpenseId === expense.id}
+                          onClick={() =>
+                            setViewExpenseId((prev) => (prev === expense.id ? null : expense.id))
+                          }
+                        >
+                          查看账单 <Amount cents={expense.amountCents} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn--sm btn--primary"
+                          onClick={() =>
+                            setLinkRestock({
+                              restockId: record.id,
+                              name: `${record.itemName}补货`,
+                              payerId: record.memberId,
+                              date: doneDate,
+                            })
+                          }
+                        >
+                          补记费用
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="item__side">
-                    {expense ? (
-                      <button
-                        type="button"
-                        className="btn btn--sm"
-                        aria-expanded={viewExpenseId === expense.id}
-                        onClick={() =>
-                          setViewExpenseId((prev) => (prev === expense.id ? null : expense.id))
-                        }
-                      >
-                        查看账单 <Amount cents={expense.amountCents} />
-                      </button>
-                    ) : (
-                      <span className="tiny muted">未关联费用</span>
-                    )}
-                  </div>
-                </div>
-                {expense && viewExpenseId === expense.id ? (
-                  <div style={{ marginTop: 10, width: '100%' }}>
-                    <div className="divider" />
-                    <div className="small muted">
-                      {expense.name} · {expense.date} · {nameOf(expense.payerId)}垫付
+                  {expense && viewExpenseId === expense.id ? (
+                    <div style={{ marginTop: 10, width: '100%' }}>
+                      <div className="divider" />
+                      <div className="small muted">
+                        {expense.name} · {expense.date} · {nameOf(expense.payerId)}垫付
+                      </div>
+                      <div className="table-scroll">
+                        <table className="table" style={{ marginTop: 6 }}>
+                          <thead>
+                            <tr>
+                              <th>成员</th>
+                              <th>承担金额</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {expense.shares.map((share) => (
+                              <tr key={share.memberId}>
+                                <td>
+                                  {nameOf(share.memberId)}
+                                  {share.memberId === expense.payerId ? '（付款人）' : ''}
+                                </td>
+                                <td>
+                                  <Amount cents={share.amountCents} />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="small muted" style={{ marginTop: 6 }}>
+                        该补货记录已关联一笔有效费用，不会重复生成；若这笔账单被作废，可以重新补记。
+                      </div>
                     </div>
-                    <table className="table" style={{ marginTop: 6 }}>
-                      <thead>
-                        <tr>
-                          <th>成员</th>
-                          <th>承担金额</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {expense.shares.map((share) => (
-                          <tr key={share.memberId}>
-                            <td>
-                              {nameOf(share.memberId)}
-                              {share.memberId === expense.payerId ? '（付款人）' : ''}
-                            </td>
-                            <td>
-                              <Amount cents={share.amountCents} />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="tiny muted" style={{ marginTop: 6 }}>
-                      该补货记录已关联一笔有效费用，不会重复生成。
-                    </div>
-                  </div>
-                ) : null}
-                </>
+                  ) : null}
+                </Fragment>
               );
             })}
           </div>
         )}
+        <div className="small muted" style={{ marginTop: 10 }}>
+          没有关联有效账单的记录随时可以「补记费用」；同一条补货记录最多关联一笔有效费用（业务层校验，不靠按钮隐藏）。
+        </div>
       </div>
 
       {itemFormOpen ? <ItemFormModal onClose={() => setItemFormOpen(false)} /> : null}
@@ -284,9 +315,14 @@ export default function SuppliesPage() {
                   type="button"
                   className="btn btn--primary"
                   onClick={() => {
-                    const id = restockDone.restockId;
+                    const id = restockDone.restockId as string;
                     setRestockDone(null);
-                    setLinkRestock({ item: restockDone.item, restockId: id });
+                    setLinkRestock({
+                      restockId: id,
+                      name: `${restockDone.item.name}补货`,
+                      payerId: me,
+                      date: todayKey(),
+                    });
                   }}
                 >
                   同时记一笔
@@ -299,7 +335,7 @@ export default function SuppliesPage() {
             可以选择「同时记一笔」，把这次采购计入账本并自动关联到本次补货记录。
           </p>
           <p className="small muted">
-            金额与参与人需要你确认后提交；直接关闭不会撤销已完成的补货。
+            金额与参与人需要你确认后提交；直接关闭不会撤销已完成的补货，之后仍可在补货记录里「补记费用」。
           </p>
         </Modal>
       ) : null}
@@ -307,13 +343,13 @@ export default function SuppliesPage() {
       {linkRestock ? (
         <ExpenseFormModal
           initial={{
-            name: `${linkRestock.item.name}补货`,
+            name: linkRestock.name,
             category: 'supplies',
-            payerId: me,
-            date: todayKey(),
+            payerId: linkRestock.payerId,
+            date: linkRestock.date,
           }}
           linkedRestockId={linkRestock.restockId}
-          hint="已预填名称与购买人，金额与参与人仍需你确认。"
+          hint={`已按补货记录预填物品名称、购买人（${nameOf(linkRestock.payerId)}）和补货日期；金额与参与人仍需你确认。`}
           onClose={() => setLinkRestock(null)}
         />
       ) : null}
@@ -429,8 +465,8 @@ function ItemFormModal({ onClose }: { onClose: () => void }) {
             />
           </Field>
         </div>
-        <div className="tiny muted">
-          余量 ≤ 2 视为「快用完」，归零为「已用完」；补货完成后余量会恢复到满量。
+        <div className="small muted">
+          {supplyRuleHint()}补货完成后余量会恢复到满量，并自动移出「需要补货」提醒。
         </div>
       </div>
     </Modal>

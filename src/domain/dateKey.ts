@@ -88,6 +88,11 @@ export function nowISO(): string {
   return new Date().toISOString();
 }
 
+/** ISO 时间串 -> 本地日期键（避免 UTC 日期与本地日期错一天） */
+export function dateKeyOf(iso: string): string {
+  return toDateKey(new Date(iso));
+}
+
 export function formatTimeCN(iso: string): string {
   const d = new Date(iso);
   const m = `${d.getMonth() + 1}`.padStart(2, '0');

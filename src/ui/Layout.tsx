@@ -27,6 +27,18 @@ const NAV = [
   { to: '/nest', label: '小窝', Icon: IconNest },
 ];
 
+/** 侧栏徽标 = 该页全部待办（含付款与值日），与首页「待我确认」口径不同 */
+function badgeHint(to: string, badge: number): string {
+  const scope: Record<string, string> = {
+    '/': '我的待付款 + 待我确认 + 我的未完成值日',
+    '/ledger': '我的待付款 + 待我确认收款',
+    '/chores': '我的未完成值日 + 待我处理的换班',
+    '/supplies': '需要补货的物品',
+    '/nest': '待我确认的公约',
+  };
+  return `全部待办 ${badge} 项：${scope[to] ?? ''}`;
+}
+
 export function AppShell({ children, header }: { children: ReactNode; header?: ReactNode }) {
   const { state, saveError, notice, unavailableMessage } = useStore();
   const location = useLocation();
@@ -104,7 +116,11 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
               >
                 <Icon />
                 <span>{label}</span>
-                {badge > 0 ? <span className="nav__badge">{badge}</span> : null}
+                {badge > 0 ? (
+                  <span className="nav__badge" title={badgeHint(to, badge)}>
+                    {badge}
+                  </span>
+                ) : null}
               </NavLink>
             );
           })}
@@ -116,7 +132,9 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
             <Avatar text={currentMember?.initial ?? '?'} />
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 650 }}>{currentMember?.name ?? '—'}</div>
-              <div className="tiny muted">切换身份以查看对应待办</div>
+              <div className="tiny muted">
+                切换身份可以体验对方视角下能做什么、不能做什么
+              </div>
             </div>
           </div>
           <div className="identity__list">
@@ -135,7 +153,10 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
         </div>
 
         <div className="sidebar__footer">
-          <div className="tiny muted">本机演示 · 数据仅保存在当前浏览器</div>
+          <div className="small muted">
+            侧栏徽标 = 该页全部待办（含我的付款与值日）；首页「待我确认」只统计收款、换班、公约三类确认。
+          </div>
+          <div className="small muted">本机演示 · 数据仅保存在当前浏览器</div>
           <button type="button" className="btn btn--sm" onClick={() => setResetOpen(true)}>
             <IconReset size={15} /> 重置演示数据
           </button>

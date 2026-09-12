@@ -5,6 +5,7 @@ import { SCHEMA_VERSION } from '../domain/types';
 import { summarizeFor } from '../domain/expenses';
 import { buildTasks } from '../domain/chores';
 import { activeVersion, pendingVersion } from '../domain/pact';
+import { supplyStatus } from '../domain/supplies';
 import { startOfWeek, todayKey, addDays } from '../domain/dateKey';
 
 describe('数据迁移', () => {
@@ -81,7 +82,7 @@ describe('示例数据', () => {
   });
 
   it('覆盖充足、快用完、已用完三种物品状态', () => {
-    const statuses = new Set(seed.supplies.map((item) => (item.stock <= 0 ? 'out' : item.stock <= 2 ? 'low' : 'ok')));
+    const statuses = new Set(seed.supplies.map((item) => supplyStatus(item)));
     expect(statuses).toContain('ok');
     expect(statuses).toContain('low');
     expect(statuses).toContain('out');

@@ -168,8 +168,13 @@ export interface ChoreTask {
 
 export type SupplyStatus = 'ok' | 'low' | 'out';
 
-/** 余量 ≤ 此值视为「快用完」 */
-export const LOW_STOCK_THRESHOLD = 2;
+/**
+ * 库存状态按「容量比例」判断，而不是全局绝对数量：
+ * - 余量 0 → 已用完
+ * - 未满 且 余量/满量 ≤ 0.5 → 快用完
+ * - 其他 → 充足
+ */
+export const LOW_STOCK_RATIO = 0.5;
 
 export interface SupplyClaim {
   memberId: MemberId;

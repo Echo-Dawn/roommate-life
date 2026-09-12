@@ -118,7 +118,17 @@ export function summarizeFor(state: AppState, memberId: MemberId): SettlementSum
   return result;
 }
 
-export type MySettleFilter = 'all' | 'unpaid' | 'awaiting_confirm' | 'settled' | 'none';
+/**
+ * 'unpaid' / 'awaiting_confirm' / 'settled' 按「本人承担的份额」判断；
+ * 'receivable' 是收款视角：本人是垫付人，且仍有他人份额未结清。
+ */
+export type MySettleFilter =
+  | 'all'
+  | 'unpaid'
+  | 'awaiting_confirm'
+  | 'settled'
+  | 'receivable'
+  | 'none';
 
 export interface ExpenseFilter {
   month: string; // YYYY-MM 或 'all'
@@ -132,6 +142,14 @@ export const DEFAULT_EXPENSE_FILTER: ExpenseFilter = {
   mine: 'all',
 };
 
+/** 收款视角：本人垫付，且至少还有一位其他成员未结清 */
+export function hasUnsettledForPayer(expense: Expense, memberId: MemberId): boolean {
+  if (expense.payerId !== memberId) return false;
+  return expense.shares.some(
+    (s) => s.memberId !== memberId && shareStatus(expense, s) !== 'settled',
+  );
+}
+
 export function matchesFilter(
   expense: Expense,
   filter: ExpenseFilter,
@@ -140,12 +158,24 @@ export function matchesFilter(
   if (filter.month !== 'all' && !expense.date.startsWith(filter.month)) return false;
   if (filter.category !== 'all' && expense.category !== filter.category) return false;
   if (filter.mine !== 'all') {
+    if (filter.mine === 'receivable') {
+      return hasUnsettledForPayer(expense, memberId);
+    }
     const share = expense.shares.find((s) => s.memberId === memberId);
     const status = share ? shareStatus(expense, share) : 'none';
     if (status !== filter.mine) return false;
   }
   return true;
 }
+
+export const MINE_FILTER_LABELS: Record<MySettleFilter, string> = {
+  all: '全部账单',
+  unpaid: '我的待付款',
+  awaiting_confirm: '我的待确认',
+  settled: '我的已结清',
+  receivable: '我垫付待收款',
+  none: '未参与分摊',
+};
 
 export function availableMonths(expenses: Expense[]): string[] {
   const set = new Set<string>();

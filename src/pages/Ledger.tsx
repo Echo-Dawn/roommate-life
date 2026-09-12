@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAction, useAppState } from '../store/hooks';
 import {
   Amount,
@@ -19,6 +20,7 @@ import {
   canVoidExpense,
   matchesFilter,
   summarizeFor,
+  MINE_FILTER_LABELS,
   type ExpenseFilter,
   type MySettleFilter,
 } from '../domain/expenses';
@@ -26,20 +28,28 @@ import { categoryLabel, type Expense, type ExpenseCategory, type ShareView } fro
 import { formatMonthCN } from '../domain/dateKey';
 
 const MINE_FILTERS: { value: MySettleFilter; label: string }[] = [
-  { value: 'all', label: '全部账单' },
-  { value: 'unpaid', label: '我的待付款' },
-  { value: 'awaiting_confirm', label: '我的待确认' },
-  { value: 'settled', label: '我的已结清' },
+  { value: 'all', label: MINE_FILTER_LABELS.all },
+  { value: 'unpaid', label: MINE_FILTER_LABELS.unpaid },
+  { value: 'awaiting_confirm', label: MINE_FILTER_LABELS.awaiting_confirm },
+  { value: 'receivable', label: MINE_FILTER_LABELS.receivable },
+  { value: 'settled', label: MINE_FILTER_LABELS.settled },
 ];
 
 export default function LedgerPage() {
   const state = useAppState();
   const run = useAction();
+  const location = useLocation();
   const [filter, setFilter] = useState<ExpenseFilter>(DEFAULT_EXPENSE_FILTER);
   const [formOpen, setFormOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [disputeTarget, setDisputeTarget] = useState<ShareView | null>(null);
   const [voidTarget, setVoidTarget] = useState<Expense | null>(null);
+
+  // 支持从首页金额卡带着筛选条件跳转过来
+  useEffect(() => {
+    const incoming = (location.state as { filter?: Partial<ExpenseFilter> } | null)?.filter;
+    if (incoming) setFilter((prev) => ({ ...prev, ...incoming }));
+  }, [location.state]);
 
   const me = state.currentMemberId;
   const nameOf = (id: string) => state.members.find((m) => m.id === id)?.name ?? id;
@@ -162,11 +172,20 @@ export default function LedgerPage() {
             </select>
           </div>
         </div>
+        <div className="small muted" style={{ marginTop: 10 }}>
+          {filter.mine === 'receivable'
+            ? '收款视角：只显示你垫付、且还有室友尚未结清的账单，与「我的待确认」不同，后者只统计已标记付款等你确认的份额。'
+            : '“我的结算状态”按你本人承担的份额筛选；“我垫付待收款”是收款视角，按你垫付且他人未结清筛选。'}
+        </div>
       </div>
 
       {visible.length === 0 ? (
         <div className="card">
-          <Empty>当前筛选条件下没有账单。换个条件，或点右上角「记一笔」。</Empty>
+          <Empty>
+            当前筛选（{MINE_FILTER_LABELS[filter.mine]}
+            {filter.month !== 'all' ? ` · ${formatMonthCN(`${filter.month}-01`)}` : ''}）下没有账单。
+            可切换到「全部账单」，或点右上角「记一笔」。
+          </Empty>
         </div>
       ) : (
         <div className="list" style={{ marginTop: 14 }}>
@@ -249,15 +268,16 @@ export default function LedgerPage() {
                         备注：{expense.note}
                       </div>
                     ) : null}
-                    <table className="table" style={{ marginTop: 10 }}>
-                      <thead>
-                        <tr>
-                          <th>成员</th>
-                          <th>承担金额</th>
-                          <th>状态</th>
-                          <th>操作</th>
-                        </tr>
-                      </thead>
+                    <div className="table-scroll">
+                      <table className="table" style={{ marginTop: 10 }}>
+                        <thead>
+                          <tr>
+                            <th>成员</th>
+                            <th>承担金额</th>
+                            <th>状态</th>
+                            <th>操作</th>
+                          </tr>
+                        </thead>
                       <tbody>
                         {views.map((view) => (
                           <tr key={view.share.memberId}>
@@ -370,6 +390,7 @@ export default function LedgerPage() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                     {(expense.shares.some((s) => (s.disputeLog?.length ?? 0) > 0)) ? (
                       <div style={{ marginTop: 10 }}>
                         <div className="small" style={{ fontWeight: 600 }}>

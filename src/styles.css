@@ -43,8 +43,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.65;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -120,7 +120,7 @@ h4 {
 }
 
 .brand__home {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -233,7 +233,7 @@ h4 {
 }
 
 .card__title {
-  font-size: 16px;
+  font-size: 17px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -241,7 +241,7 @@ h4 {
 
 .card__hint {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .grid {
@@ -279,11 +279,11 @@ h4 {
 }
 
 .small {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .tiny {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .amount {
@@ -354,9 +354,9 @@ h4 {
 }
 
 .btn--sm {
-  padding: 6px 10px;
-  min-height: 32px;
-  font-size: 13px;
+  padding: 7px 11px;
+  min-height: 34px;
+  font-size: 14px;
 }
 
 .btn--block {
@@ -377,9 +377,9 @@ textarea:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
+  padding: 4px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   border: 1px solid transparent;
   white-space: nowrap;
@@ -447,7 +447,7 @@ textarea:focus-visible {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--surface-2);
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .banner--warn {
@@ -483,18 +483,18 @@ textarea:focus-visible {
 }
 
 .field__label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-2);
 }
 
 .field__hint {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
 }
 
 .field__error {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--danger);
   font-weight: 550;
 }
@@ -612,7 +612,7 @@ textarea:focus-visible {
 
 .item__meta {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   margin-top: 3px;
 }
 
@@ -651,7 +651,7 @@ textarea:focus-visible {
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface-2);
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .week-grid {
@@ -678,7 +678,7 @@ textarea:focus-visible {
 }
 
 .day__label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   color: var(--text-2);
   display: flex;
@@ -693,8 +693,8 @@ textarea:focus-visible {
   border: 1px solid var(--border-strong);
   background: var(--surface);
   border-radius: 8px;
-  padding: 6px 7px;
-  font-size: 12px;
+  padding: 7px 8px;
+  font-size: 13px;
   cursor: pointer;
   min-width: 0;
 }
@@ -730,7 +730,7 @@ textarea:focus-visible {
 
 .chip__meta {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -746,7 +746,7 @@ textarea:focus-visible {
 }
 
 .stat__label {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -761,9 +761,45 @@ textarea:focus-visible {
 }
 
 .stat__foot {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   margin-top: 4px;
+}
+
+/* 可点击的统计卡（首页金额卡）：保留按钮语义，支持键盘操作 */
+.stat--link {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-color: var(--border-strong);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat--link:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 12px rgba(32, 92, 70, 0.12);
+}
+
+.stat__more {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--primary);
+}
+
+.stat__scope {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-backdrop {
@@ -868,14 +904,14 @@ textarea:focus-visible {
 .table th,
 .table td {
   text-align: left;
-  padding: 7px 8px;
+  padding: 8px 9px;
   border-bottom: 1px solid var(--border);
 }
 
 .table th {
   color: var(--muted);
   font-weight: 600;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .identity {
@@ -916,7 +952,7 @@ textarea:focus-visible {
 .kv {
   display: flex;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   padding: 4px 0;
 }
 
