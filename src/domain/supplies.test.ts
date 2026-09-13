@@ -17,6 +17,8 @@ function item(stock: number, fullStock: number): SupplyItem {
     claim: null,
     createdAt: 'x',
     createdBy: 'lin',
+    archived: false,
+    archivedAt: null,
   };
 }
 

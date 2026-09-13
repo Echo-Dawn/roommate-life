@@ -5,13 +5,17 @@ import { Avatar, Empty, Field, Modal, PactBadge, Textarea } from '../ui/primitiv
 import { useToast } from '../ui/Toast';
 import { IconCheck, IconDoc, IconEdit, IconNest, IconReset } from '../ui/Icon';
 import {
+  CLAUSE_CHANGE_LABEL,
   activeVersion,
+  changedClauses,
   confirmedCount,
   countFilled,
+  diffPactContent,
   emptyPactContent,
   hasContent,
   pendingVersion,
   sortedVersions,
+  type ClauseDiff,
 } from '../domain/pact';
 import { PACT_CLAUSES, type PactContent } from '../domain/types';
 import { formatTimeCN } from '../domain/dateKey';
@@ -22,6 +26,7 @@ export default function NestPage() {
   const toast = useToast();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [expandedVersion, setExpandedVersion] = useState<string | null>(null);
 
   const me = state.currentMemberId;
   const nameOf = (id: string) => state.members.find((m) => m.id === id)?.name ?? id;
@@ -126,18 +131,10 @@ export default function NestPage() {
             {nameOf(pending.createdBy)} 提交于 {formatTimeCN(pending.createdAt)} · 已确认{' '}
             {confirmedCount(pending)}/{pending.memberIds.length}
           </div>
-          <div className="stack">
-            {PACT_CLAUSES.map((clause) => (
-              <div key={clause.key}>
-                <div className="small" style={{ fontWeight: 650 }}>
-                  {clause.label}
-                </div>
-                <div className="small muted">
-                  {pending.content[clause.key]?.trim() || '（未填写）'}
-                </div>
-              </div>
-            ))}
-          </div>
+          <PactDiffList
+            diffs={diffPactContent(active?.content ?? null, pending.content)}
+            baseLabel={active ? `当前生效 v${active.version}` : '当前无生效版本'}
+          />
           <div className="divider" />
           <div className="list">
             {pending.memberIds.map((id) => (
@@ -188,7 +185,8 @@ export default function NestPage() {
             </div>
           ) : null}
           <div className="tiny muted" style={{ marginTop: 8 }}>
-            待确认版本不可直接修改；全员确认后新版本生效，旧版本在生效前继续有效。
+            待确认版本不可直接修改；全员确认后新版本生效，旧版本在生效前继续有效。确认动作绑定到「v
+            {pending.version}」这一具体版本，不会因后续编辑而转移。
           </div>
         </div>
       ) : null}
@@ -255,29 +253,70 @@ export default function NestPage() {
             <Empty>还没有任何版本。</Empty>
           ) : (
             <div className="list">
-              {versions.map((version) => (
-                <div className="item" key={version.id}>
-                  <div className="item__main">
-                    <div className="item__title">
-                      v{version.version}
-                      <PactBadge status={version.status} />
-                    </div>
-                    <div className="item__meta">
-                      {nameOf(version.createdBy)} 发起 · {formatTimeCN(version.createdAt)} · 确认{' '}
-                      {confirmedCount(version)}/{version.memberIds.length}
-                    </div>
-                    <div className="small muted" style={{ marginTop: 6 }}>
-                      已填写 {countFilled(version.content)}/{PACT_CLAUSES.length} 条 ·{' '}
-                      {version.memberIds.map((id) => nameOf(id)).join('、')}
-                    </div>
-                    <div className="small muted" style={{ marginTop: 6 }}>
-                      {PACT_CLAUSES.filter((c) => version.content[c.key]?.trim())
-                        .map((c) => `${c.label}：${version.content[c.key]}`)
-                        .join(' ｜ ') || '（无内容）'}
+              {versions.map((version, index) => {
+                const previous = versions[index + 1] ?? null;
+                const diffs = diffPactContent(previous?.content ?? null, version.content);
+                const changed = changedClauses(diffs);
+                const expanded = expandedVersion === version.id;
+                return (
+                  <div className="item" key={version.id}>
+                    <div className="item__main">
+                      <div className="item__title">
+                        v{version.version}
+                        <PactBadge status={version.status} />
+                      </div>
+                      <div className="item__meta">
+                        {nameOf(version.createdBy)} 发起 · {formatTimeCN(version.createdAt)} · 确认{' '}
+                        {confirmedCount(version)}/{version.memberIds.length}
+                      </div>
+                      <div className="small muted" style={{ marginTop: 6 }}>
+                        {changed.length === 0
+                          ? '与上一版内容一致'
+                          : `相对 ${previous ? `v${previous.version}` : '空白'}：${
+                              changed
+                                .map((d) => `${CLAUSE_CHANGE_LABEL[d.type]}「${d.label}」`)
+                                .join('、')
+                            }`}
+                      </div>
+                      {expanded ? (
+                        <div className="stack" style={{ marginTop: 8 }}>
+                          {PACT_CLAUSES.map((clause) => (
+                            <div key={clause.key}>
+                              <div className="small" style={{ fontWeight: 650 }}>
+                                {clause.label}
+                              </div>
+                              <div className="small muted">
+                                {version.content[clause.key]?.trim() || '（未填写）'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="small muted" style={{ marginTop: 6 }}>
+                          {PACT_CLAUSES.filter((c) => version.content[c.key]?.trim())
+                            .map((c) => `${c.label}：${version.content[c.key]}`)
+                            .join(' ｜ ') || '（无内容）'}
+                        </div>
+                      )}
+                      <div className="row" style={{ marginTop: 8 }}>
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          aria-expanded={expanded}
+                          onClick={() =>
+                            setExpandedVersion((prev) => (prev === version.id ? null : version.id))
+                          }
+                        >
+                          {expanded ? '收起完整内容' : '查看完整内容'}
+                        </button>
+                        {version.status === 'active' ? (
+                          <span className="tiny muted">当前生效版本</span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Modal>
@@ -314,6 +353,64 @@ export default function NestPage() {
         </Modal>
       ) : null}
     </>
+  );
+}
+
+/** 条款差异列表：只列出有变化的条款，未变化的可折叠查看 */
+function PactDiffList({ diffs, baseLabel }: { diffs: ClauseDiff[]; baseLabel: string }) {
+  const [showAll, setShowAll] = useState(false);
+  const changed = useMemo(() => changedClauses(diffs), [diffs]);
+  const shown = showAll ? diffs : changed;
+
+  return (
+    <div className="stack">
+      <div className="small muted">
+        与{baseLabel}对比：
+        {changed.length === 0 ? '内容没有变化' : `${changed.length} 条条款有变化`}
+      </div>
+      {shown.length === 0 ? (
+        <div className="small muted">没有需要比对的内容。</div>
+      ) : (
+        <div className="list">
+          {shown.map((diff) => (
+            <div className="item" key={diff.key}>
+              <div className="item__main">
+                <div className="item__title">
+                  {diff.label}
+                  <span className={`badge badge--${diff.type}`}>
+                    {CLAUSE_CHANGE_LABEL[diff.type]}
+                  </span>
+                </div>
+                {diff.type === 'added' ? (
+                  <div className="small">新增内容：{diff.after}</div>
+                ) : diff.type === 'removed' ? (
+                  <div className="small muted">
+                    原内容（将不再保留）：<s>{diff.before}</s>
+                  </div>
+                ) : diff.type === 'modified' ? (
+                  <>
+                    <div className="small muted">
+                      原内容：<s>{diff.before}</s>
+                    </div>
+                    <div className="small">改为：{diff.after}</div>
+                  </>
+                ) : (
+                  <div className="small muted">{diff.after || '（未填写）'}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <button
+        type="button"
+        className="btn btn--sm btn--ghost"
+        aria-expanded={showAll}
+        onClick={() => setShowAll((prev) => !prev)}
+      >
+        {showAll ? '只看有变化的条款' : `显示全部 ${diffs.length} 条条款`}
+      </button>
+    </div>
   );
 }
 

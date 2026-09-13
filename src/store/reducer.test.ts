@@ -35,6 +35,8 @@ const ITEM: SupplyItem = {
   claim: null,
   createdAt: 'x',
   createdBy: 'lin',
+  archived: false,
+  archivedAt: null,
 };
 
 describe('新增账单', () => {

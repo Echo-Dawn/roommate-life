@@ -1,7 +1,15 @@
-import { nowISO, todayKey } from '../domain/dateKey';
+import { nowISO, todayKey, addDays, compareKeys } from '../domain/dateKey';
 import { checkCustomSplit, splitEqually, stableSort } from '../domain/split';
 import { buildShareView, canVoidExpense } from '../domain/expenses';
-import { checkSwapPair, findTask, taskKey, type TaskQuery } from '../domain/chores';
+import {
+  checkSwapPair,
+  findTask,
+  isPausing,
+  isSwapStale,
+  ruleVersions,
+  taskKey,
+  type TaskQuery,
+} from '../domain/chores';
 import { activeVersion, hasContent, isFullyConfirmed, pendingVersion } from '../domain/pact';
 import { computeTemplateShares, periodKeyOf, previewTemplate } from '../domain/templates';
 import {
@@ -15,6 +23,7 @@ import {
   type PactContent,
   type SplitMode,
   type SupplyItem,
+  type SwapRequest,
 } from '../domain/types';
 import { createSeedState } from '../domain/seed';
 
@@ -85,6 +94,26 @@ export type Action =
   | { type: 'share/withdrawDispute'; expenseId: string; memberId: MemberId; by: MemberId }
   | { type: 'chore/addRule'; input: ChoreRuleInput }
   | { type: 'chore/complete'; key: string; by: MemberId; note: string }
+  | {
+      type: 'chore/updateRule';
+      ruleId: string;
+      effectiveFrom: string;
+      weekdays: number[];
+      memberOrder: MemberId[];
+      standard?: string;
+      note?: string;
+      by: MemberId;
+    }
+  | { type: 'chore/pause'; ruleId: string; from: string | null; by: MemberId }
+  | { type: 'chore/resume'; ruleId: string; to: string | null; by: MemberId }
+  | { type: 'chore/cleanupSwaps' }
+  | { type: 'supply/archive'; itemId: string; by: MemberId }
+  | { type: 'supply/unarchive'; itemId: string }
+  | {
+      type: 'supply/update';
+      itemId: string;
+      patch: Partial<Pick<SupplyItem, 'name' | 'category' | 'location' | 'unit' | 'stock' | 'fullStock'>>;
+    }
   | { type: 'swap/request'; fromTaskKey: string; toTaskKey: string; by: MemberId }
   | { type: 'swap/accept'; swapId: string; by: MemberId }
   | { type: 'swap/reject'; swapId: string; by: MemberId }
@@ -131,6 +160,30 @@ function taskQueryOf(state: AppState, today = todayKey()): TaskQuery {
     swaps: state.swapRequests,
     today,
   };
+}
+
+/**
+ * 规则变更或暂停后，把受影响的「待确认」换班显式标记为失效，
+ * 避免申请悬挂在已经不存在或已经改变负责人的任务上。
+ */
+function invalidateSwapsFor(
+  state: AppState,
+  ruleId: string,
+  fromDate: string,
+  at: string,
+  reason: string,
+): SwapRequest[] {
+  return state.swapRequests.map((s) => {
+    if (s.status !== 'pending') return s;
+    const touches =
+      s.fromTaskKey.startsWith(`${ruleId}|`) || s.toTaskKey.startsWith(`${ruleId}|`);
+    if (!touches) return s;
+    const fromDateKey = s.fromTaskKey.split('|')[1] ?? '';
+    const toDateKey = s.toTaskKey.split('|')[1] ?? '';
+    const affected = fromDateKey >= fromDate || toDateKey >= fromDate;
+    if (!affected) return s;
+    return { ...s, status: 'invalid', resolvedAt: at, reason };
+  });
 }
 
 export interface ActionResult {
@@ -496,8 +549,116 @@ export function applyAction(state: AppState, action: Action): ActionResult {
         startDate: input.startDate,
         createdBy: input.createdBy,
         createdAt: at,
+        versions: [
+          {
+            id: newId('ver'),
+            effectiveFrom: input.startDate,
+            weekdays: [...input.weekdays].sort((a, b) => a - b),
+            memberOrder: [...input.memberOrder],
+            anchorDate: input.startDate,
+            createdBy: input.createdBy,
+            createdAt: at,
+            note: '初始版本',
+          },
+        ],
+        pauses: [],
       };
       return ok({ ...state, choreRules: [...state.choreRules, rule] });
+    }
+
+    /**
+     * 修改规则：只追加一个新版本并从「最早次日」起生效，
+     * 历史任务仍按旧版本计算，不会被重排。
+     */
+    case 'chore/updateRule': {
+      const rule = state.choreRules.find((r) => r.id === action.ruleId);
+      if (!rule) return fail(state, '规则不存在');
+      if (action.weekdays.length === 0) return fail(state, '请至少选择一个执行日');
+      if (action.memberOrder.length === 0) return fail(state, '请至少选择一位成员');
+      const tomorrow = addDays(todayKey(), 1);
+      if (compareKeys(action.effectiveFrom, tomorrow) < 0) {
+        return fail(state, `生效日期最早为明天（${tomorrow}），历史排班不会被改写`);
+      }
+      const weekdays = [...action.weekdays].sort((a, b) => a - b);
+      const nextRule: ChoreRule = {
+        ...rule,
+        standard: action.standard?.trim() || rule.standard,
+        // 镜像字段同步为最新，便于列表展示；计算仍以版本为准
+        weekdays,
+        memberOrder: [...action.memberOrder],
+        versions: [
+          ...ruleVersions(rule),
+          {
+            id: newId('ver'),
+            effectiveFrom: action.effectiveFrom,
+            weekdays,
+            memberOrder: [...action.memberOrder],
+            anchorDate: action.effectiveFrom,
+            createdBy: action.by,
+            createdAt: at,
+            note: action.note?.trim() || '规则调整',
+          },
+        ],
+      };
+      // 受影响的未完成换班显式失效，避免悬挂
+      const swaps = invalidateSwapsFor(state, rule.id, action.effectiveFrom, at, '规则已调整，该换班申请失效');
+      return ok({
+        ...state,
+        choreRules: state.choreRules.map((r) => (r.id === nextRule.id ? nextRule : r)),
+        swapRequests: swaps,
+      });
+    }
+
+    case 'chore/pause': {
+      const rule = state.choreRules.find((r) => r.id === action.ruleId);
+      if (!rule) return fail(state, '规则不存在');
+      if (isPausing(rule)) return fail(state, '该规则已处于暂停状态');
+      const from = action.from && compareKeys(action.from, todayKey()) > 0 ? action.from : todayKey();
+      const nextRule: ChoreRule = {
+        ...rule,
+        pauses: [...(rule.pauses ?? []), { from, to: null, by: action.by, at }],
+      };
+      const swaps = invalidateSwapsFor(
+        state,
+        rule.id,
+        from,
+        at,
+        '规则已暂停，该换班申请失效',
+      );
+      return ok({
+        ...state,
+        choreRules: state.choreRules.map((r) => (r.id === nextRule.id ? nextRule : r)),
+        swapRequests: swaps,
+      });
+    }
+
+    case 'chore/resume': {
+      const rule = state.choreRules.find((r) => r.id === action.ruleId);
+      if (!rule) return fail(state, '规则不存在');
+      if (!isPausing(rule)) return fail(state, '该规则没有进行中的暂停');
+      // 恢复后按「实际发生次数」继续轮换，暂停期间不消耗轮次
+      const pauses = (rule.pauses ?? []).map((p) =>
+        p.to === null ? { ...p, to: action.to ?? todayKey() } : p,
+      );
+      return ok({
+        ...state,
+        choreRules: state.choreRules.map((r) =>
+          r.id === rule.id ? { ...r, pauses } : r,
+        ),
+      });
+    }
+
+    /** 清理过期或已失效的待确认换班 */
+    case 'chore/cleanupSwaps': {
+      const query = taskQueryOf(state);
+      const swaps = state.swapRequests.map((s) => {
+        if (s.status !== 'pending') return s;
+        if (isSwapStale(s, query)) {
+          return { ...s, status: 'expired' as const, resolvedAt: at, reason: '任务已过期或已完成' };
+        }
+        return s;
+      });
+      return ok({ ...state, swapRequests: swaps });
     }
 
     case 'chore/complete': {
@@ -535,6 +696,7 @@ export function applyAction(state: AppState, action: Action): ActionResult {
             status: 'pending',
             createdAt: at,
             resolvedAt: null,
+            reason: null,
           },
         ],
       });
@@ -621,8 +783,68 @@ export function applyAction(state: AppState, action: Action): ActionResult {
         claim: null,
         createdAt: at,
         createdBy: input.createdBy,
+        archived: false,
+        archivedAt: null,
       };
       return ok({ ...state, supplies: [...state.supplies, item] });
+    }
+
+    /** 归档：保留补货与费用历史，只是不再出现在补货提醒；有认领时先处理认领 */
+    case 'supply/archive': {
+      const item = state.supplies.find((s) => s.id === action.itemId);
+      if (!item) return fail(state, '物品不存在');
+      if (item.archived) return fail(state, '该物品已归档');
+      if (item.claim) return fail(state, '请先取消或完成当前认领，再归档该物品');
+      return ok({
+        ...state,
+        supplies: state.supplies.map((s) =>
+          s.id === item.id ? { ...s, archived: true, archivedAt: at } : s,
+        ),
+      });
+    }
+
+    case 'supply/unarchive': {
+      const item = state.supplies.find((s) => s.id === action.itemId);
+      if (!item) return fail(state, '物品不存在');
+      if (!item.archived) return fail(state, '该物品未归档');
+      return ok({
+        ...state,
+        supplies: state.supplies.map((s) =>
+          s.id === item.id ? { ...s, archived: false, archivedAt: null } : s,
+        ),
+      });
+    }
+
+    /**
+     * 编辑物品：只改当前属性，历史补货记录保留当时的名称快照，
+     * 容量变更不静默裁剪当前余量（允许余量高于参考满量，状态会显示清楚）。
+     */
+    case 'supply/update': {
+      const item = state.supplies.find((s) => s.id === action.itemId);
+      if (!item) return fail(state, '物品不存在');
+      const patch = action.patch;
+      if (patch.name !== undefined && patch.name.trim() === '') {
+        return fail(state, '请填写物品名称');
+      }
+      if (patch.fullStock !== undefined && (!Number.isInteger(patch.fullStock) || patch.fullStock < 1)) {
+        return fail(state, '满量需为不小于 1 的整数');
+      }
+      if (patch.stock !== undefined && (!Number.isInteger(patch.stock) || patch.stock < 0)) {
+        return fail(state, '余量需为不小于 0 的整数');
+      }
+      const next: SupplyItem = {
+        ...item,
+        name: patch.name?.trim() ?? item.name,
+        category: patch.category?.trim() ?? item.category,
+        location: patch.location?.trim() ?? item.location,
+        unit: patch.unit?.trim() ?? item.unit,
+        stock: patch.stock ?? item.stock,
+        fullStock: patch.fullStock ?? item.fullStock,
+      };
+      return ok({
+        ...state,
+        supplies: state.supplies.map((s) => (s.id === next.id ? next : s)),
+      });
     }
 
     case 'supply/setStock': {

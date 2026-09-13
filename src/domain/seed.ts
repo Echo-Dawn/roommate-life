@@ -213,6 +213,19 @@ export function createSeedState(today: string = todayKey()): AppState {
       startDate: ruleStart,
       createdBy: 'lin',
       createdAt: at,
+      versions: [
+        {
+          id: 'seed-rule-living-v0',
+          effectiveFrom: ruleStart,
+          weekdays: [1,3,5],
+          memberOrder: ["lin","zhou","chen"],
+          anchorDate: ruleStart,
+          createdBy: 'lin',
+          createdAt: at,
+          note: '初始版本',
+        },
+      ],
+      pauses: [],
     },
     {
       id: 'seed-rule-kitchen',
@@ -223,6 +236,19 @@ export function createSeedState(today: string = todayKey()): AppState {
       startDate: ruleStart,
       createdBy: 'zhou',
       createdAt: at,
+      versions: [
+        {
+          id: 'seed-rule-kitchen-v0',
+          effectiveFrom: ruleStart,
+          weekdays: [2,4,6],
+          memberOrder: ["zhou","chen","lin"],
+          anchorDate: ruleStart,
+          createdBy: 'zhou',
+          createdAt: at,
+          note: '初始版本',
+        },
+      ],
+      pauses: [],
     },
     {
       id: 'seed-rule-bath',
@@ -233,6 +259,19 @@ export function createSeedState(today: string = todayKey()): AppState {
       startDate: ruleStart,
       createdBy: 'chen',
       createdAt: at,
+      versions: [
+        {
+          id: 'seed-rule-bath-v0',
+          effectiveFrom: ruleStart,
+          weekdays: [0],
+          memberOrder: ["chen","lin","zhou"],
+          anchorDate: ruleStart,
+          createdBy: 'chen',
+          createdAt: at,
+          note: '初始版本',
+        },
+      ],
+      pauses: [],
     },
   ];
 
@@ -262,7 +301,7 @@ export function createSeedState(today: string = todayKey()): AppState {
   });
 
   /* ------------------------------- 公共物品 ------------------------------- */
-  const supplies: SupplyItem[] = [
+  const supplies: Array<Omit<SupplyItem, 'archived' | 'archivedAt'>> = [
     {
       id: 'seed-item-trashbag',
       name: '垃圾袋',
@@ -274,6 +313,7 @@ export function createSeedState(today: string = todayKey()): AppState {
       lastRestockedAt: addDays(today, -5),
       claim: null,
       createdAt: at,
+      // 归档字段
       createdBy: 'lin',
     },
     {
@@ -287,6 +327,7 @@ export function createSeedState(today: string = todayKey()): AppState {
       lastRestockedAt: addDays(today, -12),
       claim: null,
       createdAt: at,
+      // 归档字段
       createdBy: 'zhou',
     },
     {
@@ -300,6 +341,7 @@ export function createSeedState(today: string = todayKey()): AppState {
       lastRestockedAt: addDays(today, -25),
       claim: { memberId: 'chen', at: addDays(today, -1) },
       createdAt: at,
+      // 归档字段
       createdBy: 'chen',
     },
     {
@@ -313,6 +355,7 @@ export function createSeedState(today: string = todayKey()): AppState {
       lastRestockedAt: addDays(today, -8),
       claim: null,
       createdAt: at,
+      // 归档字段
       createdBy: 'lin',
     },
     {
@@ -326,6 +369,7 @@ export function createSeedState(today: string = todayKey()): AppState {
       lastRestockedAt: addDays(today, -18),
       claim: null,
       createdAt: at,
+      // 归档字段
       createdBy: 'zhou',
     },
   ];
@@ -406,7 +450,7 @@ export function createSeedState(today: string = todayKey()): AppState {
     choreTaskState,
     choreAssignments: {},
     swapRequests: [],
-    supplies,
+    supplies: supplies.map((item) => ({ ...item, archived: false, archivedAt: null })),
     restocks,
     pactVersions,
     pactDraft: null,

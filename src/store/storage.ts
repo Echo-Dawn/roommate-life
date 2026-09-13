@@ -69,6 +69,54 @@ const MIGRATIONS: Record<number, (input: Record<string, unknown>) => Record<stri
       }),
     };
   },
+  // 2 -> 3：值日规则引入「版本 + 暂停区间」，物品支持归档
+  2: (input) => {
+    const choreRules = Array.isArray(input.choreRules) ? input.choreRules : [];
+    const supplies = Array.isArray(input.supplies) ? input.supplies : [];
+    return {
+      ...input,
+      schemaVersion: 3,
+      choreRules: choreRules.map((rule) => {
+        if (!isPlainObject(rule)) return rule;
+        const id = typeof rule.id === 'string' ? rule.id : `rule-${Math.random()}`;
+        const startDate = typeof rule.startDate === 'string' ? rule.startDate : '2026-01-01';
+        const weekdays = Array.isArray(rule.weekdays) ? rule.weekdays : [];
+        const memberOrder = Array.isArray(rule.memberOrder) ? rule.memberOrder : [];
+        const versions = Array.isArray(rule.versions) ? rule.versions : [];
+        return {
+          ...rule,
+          // 旧规则没有版本历史：用原字段构造初始版本，保证历史排班结果不变
+          versions:
+            versions.length > 0
+              ? versions
+              : [
+                  {
+                    id: `${id}-v0`,
+                    effectiveFrom: startDate,
+                    weekdays,
+                    memberOrder,
+                    anchorDate: startDate,
+                    createdBy: rule.createdBy ?? null,
+                    createdAt: rule.createdAt ?? startDate,
+                    note: '初始版本（迁移生成）',
+                  },
+                ],
+          pauses: Array.isArray(rule.pauses) ? rule.pauses : [],
+        };
+      }),
+      supplies: supplies.map((item) => {
+        if (!isPlainObject(item)) return item;
+        return {
+          ...item,
+          archived: item.archived === true,
+          archivedAt: typeof item.archivedAt === 'string' ? item.archivedAt : null,
+        };
+      }),
+      swapRequests: (Array.isArray(input.swapRequests) ? input.swapRequests : []).map((s) =>
+        isPlainObject(s) ? { ...s, reason: typeof s.reason === 'string' ? s.reason : null } : s,
+      ),
+    };
+  },
 };
 
 function validate(state: unknown): AppState {

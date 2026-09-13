@@ -9,6 +9,7 @@ import {
   Field,
   Input,
   Modal,
+  Select,
   SupplyBadge,
 } from '../ui/primitives';
 import { ExpenseFormModal } from '../features/expenses/ExpenseForm';
@@ -39,6 +40,7 @@ export default function SuppliesPage() {
   const run = useAction();
   const location = useLocation();
   const [itemFormOpen, setItemFormOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<SupplyItem | null>(null);
   const [restockDone, setRestockDone] = useState<{ item: SupplyItem; restockId: string | null } | null>(
     null,
   );
@@ -72,8 +74,33 @@ export default function SuppliesPage() {
   const nameOf = (id: string) => state.members.find((m) => m.id === id)?.name ?? id;
   const initialOf = (id: string) => state.members.find((m) => m.id === id)?.initial ?? '?';
 
-  const ordered = useMemo(() => sortByUrgency(state.supplies), [state.supplies]);
-  const recentRestocks = useMemo(() => state.restocks.slice(0, 8), [state.restocks]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<string>('all');
+  const [historyLimit, setHistoryLimit] = useState(8);
+
+  const activeSupplies = useMemo(
+    () => state.supplies.filter((i) => !i.archived),
+    [state.supplies],
+  );
+  const archivedSupplies = useMemo(
+    () => state.supplies.filter((i) => i.archived),
+    [state.supplies],
+  );
+
+  const ordered = useMemo(() => sortByUrgency(activeSupplies), [activeSupplies]);
+
+  /** 完整补货历史：按物品筛选 + 加载更多，不再固定只显示 8 条 */
+  const filteredRestocks = useMemo(
+    () =>
+      [...state.restocks]
+        .filter((r) => historyFilter === 'all' || r.itemId === historyFilter)
+        .sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1)),
+    [state.restocks, historyFilter],
+  );
+  const recentRestocks = useMemo(
+    () => filteredRestocks.slice(0, historyLimit),
+    [filteredRestocks, historyLimit],
+  );
 
   function linkedExpense(restockId: string) {
     return (
@@ -111,8 +138,9 @@ export default function SuppliesPage() {
         <div>
           <h1 className="topbar__title">公共物品</h1>
           <div className="topbar__sub">
-            {state.supplies.length} 件在册 · 需要补货{' '}
-            {state.supplies.filter((i) => supplyStatus(i) !== 'ok').length} 件
+            {activeSupplies.length} 件在册 · 需要补货{' '}
+            {activeSupplies.filter((i) => supplyStatus(i) !== 'ok').length} 件
+            {archivedSupplies.length > 0 ? ` · 已归档 ${archivedSupplies.length} 件` : ''}
           </div>
         </div>
         <button type="button" className="btn btn--primary" onClick={() => setItemFormOpen(true)}>
@@ -221,6 +249,29 @@ export default function SuppliesPage() {
                       已被 {nameOf(item.claim.memberId)} 认领，不能重复认领
                     </span>
                   ) : null}
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => setEditingItem(item)}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => {
+                      if (item.claim) {
+                        run(
+                          { type: 'supply/archive', itemId: item.id, by: me },
+                          '该物品已被认领，请先取消或完成认领再归档',
+                        );
+                        return;
+                      }
+                      run({ type: 'supply/archive', itemId: item.id, by: me }, '物品已归档');
+                    }}
+                  >
+                    归档
+                  </button>
                 </div>
               </div>
             );
@@ -228,15 +279,81 @@ export default function SuppliesPage() {
         </div>
       )}
 
+      {archivedSupplies.length > 0 ? (
+        <div className="card" style={{ marginTop: 14 }}>
+          <div className="card__head">
+            <div className="card__title">已归档物品</div>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              {showArchived ? '收起' : `展开（${archivedSupplies.length}）`}
+            </button>
+          </div>
+          {showArchived ? (
+            <div className="list">
+              {archivedSupplies.map((item) => (
+                <div className="item" key={item.id}>
+                  <div className="item__main">
+                    <div className="item__title">{item.name}</div>
+                    <div className="item__meta">
+                      {item.location || '未标注位置'} · 归档后仍保留补货与费用历史
+                    </div>
+                  </div>
+                  <div className="item__side">
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      onClick={() =>
+                        run({ type: 'supply/unarchive', itemId: item.id }, '物品已恢复')
+                      }
+                    >
+                      恢复
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="small muted">归档只隐藏补货提醒，不删除任何历史记录。</div>
+          )}
+        </div>
+      ) : null}
+
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card__head">
           <div className="card__title">
             <IconDoc /> 补货记录
           </div>
-          <span className="card__hint">每条记录最多关联一笔有效费用</span>
+          <div className="row" style={{ gap: 8 }}>
+            <Select
+              aria-label="按物品筛选补货历史"
+              value={historyFilter}
+              onChange={(e) => {
+                setHistoryFilter(e.target.value);
+                setHistoryLimit(8);
+              }}
+            >
+              <option value="all">全部物品</option>
+              {state.supplies.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.archived ? '（已归档）' : ''}
+                </option>
+              ))}
+            </Select>
+            <span className="card__hint">
+              共 {filteredRestocks.length} 条，已显示 {recentRestocks.length} 条
+            </span>
+          </div>
         </div>
         {recentRestocks.length === 0 ? (
-          <Empty>还没有补货记录。</Empty>
+          <Empty>
+            {historyFilter === 'all'
+              ? '还没有补货记录。'
+              : '该物品还没有补货记录，换个物品看看。'}
+          </Empty>
         ) : (
           <div className="list">
             {recentRestocks.map((record) => {
@@ -324,9 +441,27 @@ export default function SuppliesPage() {
         <div className="small muted" style={{ marginTop: 10 }}>
           没有关联有效账单的记录随时可以「补记费用」；同一条补货记录最多关联一笔有效费用（业务层校验，不靠按钮隐藏）。
         </div>
+        {filteredRestocks.length > recentRestocks.length ? (
+          <div className="row" style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => setHistoryLimit((n) => n + 8)}
+            >
+              加载更多（还有 {filteredRestocks.length - recentRestocks.length} 条）
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {itemFormOpen ? <ItemFormModal onClose={() => setItemFormOpen(false)} /> : null}
+      {editingItem ? (
+        <ItemFormModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={() => clearDraft(editingItem.id)}
+        />
+      ) : null}
 
       {restockDone ? (
         <Modal
@@ -385,15 +520,24 @@ export default function SuppliesPage() {
   );
 }
 
-function ItemFormModal({ onClose }: { onClose: () => void }) {
+function ItemFormModal({
+  item,
+  onClose,
+  onSaved,
+}: {
+  item?: SupplyItem;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
   const state = useAppState();
   const run = useAction();
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState('清洁日用');
-  const [location, setLocation] = useState('');
-  const [unit, setUnit] = useState('');
-  const [stock, setStock] = useState('0');
-  const [fullStock, setFullStock] = useState('1');
+  const editing = Boolean(item);
+  const [name, setName] = useState(item?.name ?? '');
+  const [category, setCategory] = useState(item?.category ?? '清洁日用');
+  const [location, setLocation] = useState(item?.location ?? '');
+  const [unit, setUnit] = useState(item?.unit ?? '');
+  const [stock, setStock] = useState(item ? String(item.stock) : '0');
+  const [fullStock, setFullStock] = useState(item ? String(item.fullStock) : '1');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   function submit() {
@@ -405,6 +549,29 @@ function ItemFormModal({ onClose }: { onClose: () => void }) {
     if (!Number.isInteger(fullValue) || fullValue < 1) next.fullStock = '满量需为不小于 1 的整数';
     setErrors(next);
     if (Object.keys(next).length > 0) return;
+    if (item) {
+      // 改名不会篡改历史补货记录里的名称快照
+      const okDone = run(
+        {
+          type: 'supply/update',
+          itemId: item.id,
+          patch: {
+            name,
+            category,
+            location,
+            unit,
+            stock: stockValue,
+            fullStock: fullValue,
+          },
+        },
+        '物品已更新',
+      );
+      if (okDone) {
+        onSaved?.();
+        onClose();
+      }
+      return;
+    }
     const input: SupplyInput = {
       name,
       category,
@@ -420,7 +587,8 @@ function ItemFormModal({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="登记公共物品"
+      title={editing ? '编辑物品' : '登记公共物品'}
+      subtitle={editing ? '改名不会改变历史补货记录中的名称快照' : undefined}
       onClose={onClose}
       footer={
         <>
@@ -428,7 +596,7 @@ function ItemFormModal({ onClose }: { onClose: () => void }) {
             取消
           </button>
           <button type="button" className="btn btn--primary" onClick={submit}>
-            登记
+            {editing ? '保存' : '登记'}
           </button>
         </>
       }

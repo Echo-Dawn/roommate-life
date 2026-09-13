@@ -3,7 +3,7 @@
  * 所有金额均以「整数分」存储与计算，避免浮点误差。
  */
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type MemberId = string;
 
@@ -137,20 +137,49 @@ export interface ShareView {
 
 /* ---------------------------------- 值日 ---------------------------------- */
 
+/**
+ * 规则版本：从 effectiveFrom 起生效。
+ * 历史任务始终按当时生效的版本计算，改规则不会重排过去。
+ */
+export interface ChoreRuleVersion {
+  id: string;
+  /** YYYY-MM-DD，最早为次日 */
+  effectiveFrom: string;
+  weekdays: number[];
+  memberOrder: MemberId[];
+  /** 该版本的轮换起点 */
+  anchorDate: string;
+  createdBy: MemberId;
+  createdAt: string;
+  note: string;
+}
+
+/** 暂停区间：from 起至 to（null 表示尚未恢复） */
+export interface ChorePauseRange {
+  from: string;
+  to: string | null;
+  by: MemberId;
+  at: string;
+}
+
 export interface ChoreRule {
   id: string;
   /** 区域 */
   area: string;
   /** 完成标准 */
   standard: string;
-  /** 每周执行日 0=周日 … 6=周六 */
+  /** 每周执行日 0=周日 … 6=周六（当前生效版本的镜像，便于展示） */
   weekdays: number[];
-  /** 轮换顺序（稳定） */
+  /** 轮换顺序（当前生效版本的镜像） */
   memberOrder: MemberId[];
-  /** YYYY-MM-DD，轮换起点 */
+  /** YYYY-MM-DD，最初轮换起点 */
   startDate: string;
   createdBy: MemberId;
   createdAt: string;
+  /** 版本历史，按生效日期升序；为空时回退到上面的镜像字段 */
+  versions: ChoreRuleVersion[];
+  /** 暂停区间；暂停期间不生成任务，也不消耗轮换次数 */
+  pauses: ChorePauseRange[];
 }
 
 export interface ChoreTaskState {
@@ -159,7 +188,7 @@ export interface ChoreTaskState {
   note: string;
 }
 
-export type SwapStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type SwapStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled' | 'expired' | 'invalid';
 
 export interface SwapRequest {
   id: string;
@@ -172,6 +201,8 @@ export interface SwapRequest {
   status: SwapStatus;
   createdAt: string;
   resolvedAt: string | null;
+  /** 失效或过期原因，向用户说明 */
+  reason: string | null;
 }
 
 export type ChoreStatus = 'pending' | 'done' | 'overdue';
@@ -225,6 +256,9 @@ export interface SupplyItem {
   claim: SupplyClaim | null;
   createdAt: string;
   createdBy: MemberId;
+  /** 归档：不再出现在补货提醒，但保留补货与费用历史 */
+  archived: boolean;
+  archivedAt: string | null;
 }
 
 export interface RestockRecord {

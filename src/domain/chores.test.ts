@@ -14,6 +14,8 @@ const RULE: ChoreRule = {
   startDate: '2026-09-07', // 周一
   createdBy: 'lin',
   createdAt: '2026-09-01T00:00:00.000Z',
+  versions: [], // 空版本时回退到上面的镜像字段（兼容旧数据）
+  pauses: [],
 };
 
 function tasksFor(rule: ChoreRule, from: string, to: string, today: string): ChoreTask[] {

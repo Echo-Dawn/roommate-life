@@ -1,4 +1,4 @@
-import type { AppState, MemberId, PactContent, PactVersion } from './types';
+import type { AppState, MemberId, PactClauseKey, PactContent, PactVersion } from './types';
 import { PACT_CLAUSES } from './types';
 
 export function emptyPactContent(): PactContent {
@@ -49,3 +49,45 @@ export function hasContent(content: PactContent): boolean {
 export function countFilled(content: PactContent): number {
   return PACT_CLAUSES.filter((clause) => (content[clause.key] ?? '').trim() !== '').length;
 }
+
+/* ------------------------------ 版本条款差异 ------------------------------ */
+
+export type ClauseChangeType = 'added' | 'modified' | 'removed' | 'unchanged';
+
+export interface ClauseDiff {
+  key: PactClauseKey;
+  label: string;
+  type: ClauseChangeType;
+  before: string;
+  after: string;
+}
+
+/**
+ * 以当前生效版为基准，逐条对比待确认版本：
+ * 新增 / 修改 / 删除 / 未变化。确认仍然绑定到具体版本 ID。
+ */
+export function diffPactContent(
+  base: PactContent | null,
+  next: PactContent,
+): ClauseDiff[] {
+  return PACT_CLAUSES.map((clause) => {
+    const before = (base?.[clause.key] ?? '').trim();
+    const after = (next[clause.key] ?? '').trim();
+    let type: ClauseChangeType = 'unchanged';
+    if (before === '' && after !== '') type = 'added';
+    else if (before !== '' && after === '') type = 'removed';
+    else if (before !== after) type = 'modified';
+    return { key: clause.key, label: clause.label, type, before, after };
+  });
+}
+
+export function changedClauses(diffs: ClauseDiff[]): ClauseDiff[] {
+  return diffs.filter((d) => d.type !== 'unchanged');
+}
+
+export const CLAUSE_CHANGE_LABEL: Record<ClauseChangeType, string> = {
+  added: '新增',
+  modified: '修改',
+  removed: '删除',
+  unchanged: '未变',
+};

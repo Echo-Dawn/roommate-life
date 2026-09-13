@@ -27,7 +27,12 @@ import {
   weekdayOf,
 } from '../domain/dateKey';
 import { buildTasks } from '../domain/chores';
-import type { ChoreTask } from '../domain/types';
+import RuleEditModal, {
+  RulePauseControl,
+  RuleStatus,
+  RuleVersionHint,
+} from '../features/chores/RuleEditModal';
+import type { ChoreRule, ChoreTask } from '../domain/types';
 import type { ChoreRuleInput } from '../store/reducer';
 
 export default function ChoresPage() {
@@ -38,6 +43,8 @@ export default function ChoresPage() {
   const [activeTask, setActiveTask] = useState<ChoreTask | null>(null);
   const [swapFrom, setSwapFrom] = useState<ChoreTask | null>(null);
   const [ruleOpen, setRuleOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<ChoreRule | null>(null);
+  const [myTab, setMyTab] = useState<'todo' | 'done'>('todo');
 
   const me = state.currentMemberId;
   const nameOf = (id: string) => state.members.find((m) => m.id === id)?.name ?? id;
@@ -74,6 +81,26 @@ export default function ChoresPage() {
   const allPendingSwaps = useMemo(
     () => state.swapRequests.filter((s) => s.status === 'pending'),
     [state.swapRequests],
+  );
+
+  const staleSwaps = useMemo(
+    () => state.swapRequests.filter((s) => s.status === 'expired' || s.status === 'invalid'),
+    [state.swapRequests],
+  );
+  const myRangeTasks = useMemo(
+    () =>
+      buildTasks(query, addDays(weekStart, -28), addDays(weekStart, 35)).filter(
+        (t) => t.assigneeId === me,
+      ),
+    [query, weekStart, me],
+  );
+  const myTodo = useMemo(
+    () => myRangeTasks.filter((t) => t.status !== 'done'),
+    [myRangeTasks],
+  );
+  const myDone = useMemo(
+    () => myRangeTasks.filter((t) => t.status === 'done').reverse(),
+    [myRangeTasks],
   );
 
   const taskLabel = (key: string) => {
@@ -182,7 +209,7 @@ export default function ChoresPage() {
           </div>
           <span className="card__hint">接受后两项任务的负责人原子交换</span>
         </div>
-        {allPendingSwaps.length === 0 ? (
+        {allPendingSwaps.length === 0 && staleSwaps.length === 0 ? (
           <Empty>当前没有待确认的换班申请。</Empty>
         ) : (
           <div className="list">
@@ -240,8 +267,37 @@ export default function ChoresPage() {
                 </div>
               );
             })}
+            {staleSwaps.map((swap) => (
+              <div className="item" key={swap.id}>
+                <Avatar text={initialOf(swap.fromMemberId)} />
+                <div className="item__main">
+                  <div className="item__title">
+                    {nameOf(swap.fromMemberId)} → {nameOf(swap.toMemberId)}
+                    <span className="badge badge--own">
+                      {swap.status === 'invalid' ? '已失效' : '已过期'}
+                    </span>
+                  </div>
+                  <div className="item__meta">
+                    「{taskLabel(swap.fromTaskKey)}」换「{taskLabel(swap.toTaskKey)}」
+                  </div>
+                  <div className="item__meta">原因：{swap.reason ?? '任务已过期或已完成'}</div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
+        {allPendingSwaps.length > 0 ? (
+          <div className="row" style={{ marginTop: 10 }}>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => run({ type: 'chore/cleanupSwaps' }, '已清理过期换班申请')}
+            >
+              清理过期申请
+            </button>
+            <span className="tiny muted">规则调整或任务过期后，待确认申请会被标记失效并说明原因</span>
+          </div>
+        ) : null}
       </div>
 
       <div className="card">
@@ -257,19 +313,93 @@ export default function ChoresPage() {
             {state.choreRules.map((rule) => (
               <div className="item" key={rule.id}>
                 <div className="item__main">
-                  <div className="item__title">{rule.area}</div>
+                  <div className="item__title">
+                    {rule.area} <RuleStatus rule={rule} />
+                  </div>
                   <div className="item__meta">
                     每周 {rule.weekdays.map((d) => weekdayLabel(d)).join('、')} · 顺序{' '}
                     {rule.memberOrder.map((id) => nameOf(id)).join(' → ')}
                   </div>
                   <div className="item__meta">起始 {rule.startDate}</div>
+                  <RuleVersionHint rule={rule} />
                   <div className="item__meta">{rule.standard}</div>
+                </div>
+                <div className="item__side">
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => setEditingRule(rule)}
+                  >
+                    调整
+                  </button>
+                  <RulePauseControl rule={rule} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="tiny muted" style={{ marginTop: 8 }}>
+          调整最早次日生效，历史负责人和完成记录保持原样；暂停期间不生成任务，也不消耗轮换次数，恢复后按实际发生次数继续轮换。
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="card__head">
+          <div className="card__title">
+            <IconCheck /> 我的任务
+          </div>
+          <div className="tabs" style={{ marginBottom: 0, flex: '0 0 auto' }}>
+            {(
+              [
+                { key: 'todo', label: `待办 ${myTodo.length}` },
+                { key: 'done', label: `已完成 ${myDone.length}` },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className={`tabs__btn${myTab === item.key ? ' tabs__btn--active' : ''}`}
+                onClick={() => setMyTab(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {(myTab === 'todo' ? myTodo : myDone).length === 0 ? (
+          <Empty>{myTab === 'todo' ? '未来四周没有你负责的未完成任务。' : '还没有已完成记录。'}</Empty>
+        ) : (
+          <div className="list">
+            {(myTab === 'todo' ? myTodo : myDone).map((task) => (
+              <div className="item" key={task.key}>
+                <div className="item__main">
+                  <div className="item__title">
+                    {task.area} <ChoreBadge status={task.status} />
+                  </div>
+                  <div className="item__meta">
+                    {formatDateCN(task.date)} · {weekdayLabel(weekdayOf(task.date))}
+                    {task.swapped ? ' · 换班后负责' : ''}
+                    {task.state?.note ? ` · 备注：${task.state.note}` : ''}
+                  </div>
+                </div>
+                <div className="item__side">
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => setActiveTask(task)}
+                  >
+                    查看
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {editingRule ? (
+        <RuleEditModal rule={editingRule} onClose={() => setEditingRule(null)} />
+      ) : null}
 
       {activeTask ? (
         <TaskModal

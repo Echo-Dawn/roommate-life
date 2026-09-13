@@ -23,6 +23,8 @@ function sampleItem(): SupplyItem {
     claim: null,
     createdAt: '2026-09-01T00:00:00.000Z',
     createdBy: 'lin',
+    archived: false,
+    archivedAt: null,
   };
 }
 
