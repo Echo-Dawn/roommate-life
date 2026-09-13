@@ -3,7 +3,7 @@
  * 所有金额均以「整数分」存储与计算，避免浮点误差。
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type MemberId = string;
 
@@ -83,6 +83,35 @@ export interface Expense {
   voidedBy: MemberId | null;
   /** 由补货完成「同时记一笔」生成的关联 */
   linkedRestockId: string | null;
+  /** 由周期模板生成时记录的模板（模板改动不影响已生成账单） */
+  templateId: string | null;
+  /** 账期 YYYY-MM，与 templateId 一起用于防重复 */
+  periodKey: string | null;
+}
+
+/**
+ * 周期费用模板。
+ * 模板本身不是账单：用户选择月份、确认金额后才会生成账单，
+ * 页面关闭期间不会自动生成。
+ */
+export interface ExpenseTemplate {
+  id: string;
+  name: string;
+  category: ExpenseCategory;
+  /** 每月几号生成（1-31，短月取当月最后一天） */
+  dayOfMonth: number;
+  /** 固定金额（分）；null 表示每期手填（如水电） */
+  amountCents: number | null;
+  payerId: MemberId;
+  participantIds: MemberId[];
+  mode: SplitMode;
+  /** 自定义分摊时各人金额（分） */
+  customAmounts: Record<MemberId, number>;
+  note: string;
+  /** 停用后不再出现在生成列表；历史账单不受影响 */
+  active: boolean;
+  createdBy: MemberId;
+  createdAt: string;
 }
 
 /** 单份份额的结算状态（对外展示用） */
@@ -254,6 +283,8 @@ export interface AppState {
   members: Member[];
   currentMemberId: MemberId;
   expenses: Expense[];
+  /** 周期费用模板（房租、网费、水电等） */
+  templates: ExpenseTemplate[];
   choreRules: ChoreRule[];
   choreTaskState: Record<string, ChoreTaskState>;
   /** 换班负责人覆盖：taskKey -> memberId */

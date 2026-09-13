@@ -12,6 +12,7 @@ import {
   type PactVersion,
   type Share,
   type SupplyItem,
+  type ExpenseTemplate,
 } from './types';
 
 /**
@@ -48,7 +49,10 @@ function makeShares(
 }
 
 function expense(
-  base: Omit<Expense, 'shares' | 'voided' | 'voidedAt' | 'voidedBy' | 'linkedRestockId'>,
+  base: Omit<
+    Expense,
+    'shares' | 'voided' | 'voidedAt' | 'voidedBy' | 'linkedRestockId' | 'templateId' | 'periodKey'
+  >,
   overrides: Partial<Record<MemberId, Partial<Share>>>,
 ): Expense {
   return {
@@ -58,7 +62,61 @@ function expense(
     voidedAt: null,
     voidedBy: null,
     linkedRestockId: null,
+    templateId: null,
+    periodKey: null,
   };
+}
+
+/** 示例周期模板：房租固定、水电每期手填、宽带固定且设定在 31 日 */
+function seedTemplates(): ExpenseTemplate[] {
+  const at = nowISO();
+  return [
+    {
+      id: 'seed-tpl-rent',
+      name: '房租',
+      category: 'rent',
+      dayOfMonth: 1,
+      amountCents: 360000,
+      payerId: 'lin',
+      participantIds: [...MEMBER_ORDER],
+      mode: 'equal',
+      customAmounts: {},
+      note: '每月 1 日，三人平均分摊',
+      active: true,
+      createdBy: 'lin',
+      createdAt: at,
+    },
+    {
+      id: 'seed-tpl-utility',
+      name: '水电燃气',
+      category: 'utility',
+      dayOfMonth: 6,
+      amountCents: null,
+      payerId: 'zhou',
+      participantIds: [...MEMBER_ORDER],
+      mode: 'equal',
+      customAmounts: {},
+      note: '金额每月不同，生成前需要手填',
+      active: true,
+      createdBy: 'zhou',
+      createdAt: at,
+    },
+    {
+      id: 'seed-tpl-network',
+      name: '宽带月费',
+      category: 'network',
+      dayOfMonth: 31,
+      amountCents: 9900,
+      payerId: 'chen',
+      participantIds: [...MEMBER_ORDER],
+      mode: 'equal',
+      customAmounts: {},
+      note: '设定在 31 日，短月自动取当月最后一天',
+      active: true,
+      createdBy: 'chen',
+      createdAt: at,
+    },
+  ];
 }
 
 export function createSeedState(today: string = todayKey()): AppState {
@@ -343,6 +401,7 @@ export function createSeedState(today: string = todayKey()): AppState {
     members: SEED_MEMBERS.map((m) => ({ ...m })),
     currentMemberId: 'lin',
     expenses,
+    templates: seedTemplates(),
     choreRules,
     choreTaskState,
     choreAssignments: {},

@@ -52,6 +52,23 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 const MIGRATIONS: Record<number, (input: Record<string, unknown>) => Record<string, unknown>> = {
   // 0 -> 1：v1 之前没有 schemaVersion 字段的早期结构，按最小可用字段补齐
   0: (input) => ({ ...input, schemaVersion: 1 }),
+  // 1 -> 2：新增周期费用模板，并为历史账单补齐模板关联字段（保持原有 ID 与关联）
+  1: (input) => {
+    const expenses = Array.isArray(input.expenses) ? input.expenses : [];
+    return {
+      ...input,
+      schemaVersion: 2,
+      templates: Array.isArray(input.templates) ? input.templates : [],
+      expenses: expenses.map((e) => {
+        if (!isPlainObject(e)) return e;
+        return {
+          ...e,
+          templateId: typeof e.templateId === 'string' ? e.templateId : null,
+          periodKey: typeof e.periodKey === 'string' ? e.periodKey : null,
+        };
+      }),
+    };
+  },
 };
 
 function validate(state: unknown): AppState {
@@ -62,6 +79,12 @@ function validate(state: unknown): AppState {
   if (!Array.isArray(state.expenses)) throw new Error('缺少费用数据');
   if (!Array.isArray(state.choreRules)) throw new Error('缺少值日规则');
   if (!Array.isArray(state.supplies)) throw new Error('缺少物品数据');
+  if (!Array.isArray(state.restocks)) throw new Error('缺少补货记录');
+  if (!Array.isArray(state.swapRequests)) throw new Error('缺少换班记录');
+  if (!Array.isArray(state.templates)) {
+    // 结构缺失但其余完整时按空数组补齐，而不是判定为损坏
+    (state as Record<string, unknown>).templates = [];
+  }
   if (!Array.isArray(state.pactVersions)) throw new Error('缺少公约数据');
   if (typeof state.homeName !== 'string') throw new Error('缺少小窝名称');
   const result = state as unknown as AppState;

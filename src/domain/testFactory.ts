@@ -16,6 +16,7 @@ export function testState(overrides: Partial<AppState> = {}): AppState {
     members: MEMBERS.map((m) => ({ ...m })),
     currentMemberId: 'lin',
     expenses: [],
+    templates: [],
     choreRules: [],
     choreTaskState: {},
     choreAssignments: {},
@@ -65,6 +66,8 @@ export function makeExpense(opts: {
     voidedAt: null,
     voidedBy: null,
     linkedRestockId: null,
+    templateId: null,
+    periodKey: null,
   };
 }
 

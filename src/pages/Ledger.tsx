@@ -12,6 +12,8 @@ import {
   Textarea,
 } from '../ui/primitives';
 import { ExpenseFormModal } from '../features/expenses/ExpenseForm';
+import MonthOverview from '../features/ledger/MonthOverview';
+import TemplatePanel from '../features/ledger/TemplatePanel';
 import { IconAlert, IconCheck, IconPlus, IconTrash } from '../ui/Icon';
 import {
   DEFAULT_EXPENSE_FILTER,
@@ -25,7 +27,7 @@ import {
   type MySettleFilter,
 } from '../domain/expenses';
 import { categoryLabel, type Expense, type ExpenseCategory, type ShareView } from '../domain/types';
-import { formatMonthCN } from '../domain/dateKey';
+import { formatMonthCN, todayKey } from '../domain/dateKey';
 
 const MINE_FILTERS: { value: MySettleFilter; label: string }[] = [
   { value: 'all', label: MINE_FILTER_LABELS.all },
@@ -45,11 +47,14 @@ export default function LedgerPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [disputeTarget, setDisputeTarget] = useState<ShareView | null>(null);
   const [voidTarget, setVoidTarget] = useState<Expense | null>(null);
+  const [tab, setTab] = useState<'bills' | 'month' | 'templates'>('bills');
 
   // 支持从首页金额卡带着筛选条件跳转过来
   useEffect(() => {
     const incoming = (location.state as { filter?: Partial<ExpenseFilter> } | null)?.filter;
     if (incoming) setFilter((prev) => ({ ...prev, ...incoming }));
+    const target = (location.state as { tab?: 'bills' | 'month' | 'templates' } | null)?.tab;
+    if (target) setTab(target);
   }, [location.state]);
 
   const me = state.currentMemberId;
@@ -83,7 +88,47 @@ export default function LedgerPage() {
         </button>
       </div>
 
-      <div className="card">
+      <div className="tabs" role="tablist" aria-label="账本视图">
+        {(
+          [
+            { key: 'bills', label: '账单列表' },
+            { key: 'month', label: '月度概览' },
+            { key: 'templates', label: '费用模板' },
+          ] as const
+        ).map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.key}
+            className={`tabs__btn${tab === item.key ? ' tabs__btn--active' : ''}`}
+            onClick={() => setTab(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'month' ? (
+        <MonthOverview
+          state={state}
+          today={todayKey()}
+          onOpenExpense={(expenseId, month) => {
+            setTab('bills');
+            setFilter({ month, category: 'all', mine: 'all' });
+            setExpanded(expenseId);
+            window.requestAnimationFrame(() => {
+              document.getElementById(`expense-${expenseId}`)?.scrollIntoView({ block: 'center' });
+            });
+          }}
+        />
+      ) : null}
+
+      {tab === 'templates' ? <TemplatePanel today={todayKey()} /> : null}
+
+      {tab === 'bills' ? (
+        <>
+          <div className="card">
         <div className="grid grid--3">
           <div className="stat">
             <div className="stat__label">我的待付款</div>
@@ -196,7 +241,7 @@ export default function LedgerPage() {
             const isOpen = expanded === expense.id;
             const canVoid = canVoidExpense(expense, me);
             return (
-              <div className="card" key={expense.id} style={{ opacity: expense.voided ? 0.62 : 1 }}>
+              <div className="card" key={expense.id} id={`expense-${expense.id}`} style={{ opacity: expense.voided ? 0.62 : 1 }}>
                 <div className="card__head">
                   <div style={{ minWidth: 0 }}>
                     <div className="item__title">
@@ -414,6 +459,8 @@ export default function LedgerPage() {
           })}
         </div>
       )}
+        </>
+      ) : null}
 
       {formOpen ? <ExpenseFormModal onClose={() => setFormOpen(false)} /> : null}
 
