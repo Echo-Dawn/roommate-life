@@ -178,6 +178,34 @@ export function recoverFromCorrupt(): ResetResult {
   return resetStore();
 }
 
+export interface RestoreResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * 从备份整体替换当前数据。
+ * - 调用前应已通过 checkBackup 校验并向用户确认。
+ * - 替换前先把当前数据快照交给调用方保存（downloadBackup），失败不损坏原数据：
+ *   只有新状态成功写入 localStorage 后才更新内存快照。
+ */
+export function restoreFromBackup(state: AppState): RestoreResult {
+  try {
+    saveState(state);
+  } catch (error) {
+    const message = error instanceof StorageError ? error.message : `恢复失败：${String(error)}`;
+    return { ok: false, error: message };
+  }
+  setSnapshot({
+    status: 'ready',
+    state,
+    corrupt: null,
+    saveError: null,
+    notice: '已从备份恢复数据（整体替换）。',
+  });
+  return { ok: true };
+}
+
 export function dismissNotice(): void {
   if (snapshot.notice || snapshot.saveError) setSnapshot({ notice: null, saveError: null });
 }

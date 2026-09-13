@@ -19,6 +19,7 @@ import {
 } from '../domain/pact';
 import { PACT_CLAUSES, type PactContent } from '../domain/types';
 import { formatTimeCN } from '../domain/dateKey';
+import BackupPanel from '../features/nest/BackupPanel';
 
 export default function NestPage() {
   const state = useAppState();
@@ -229,6 +230,8 @@ export default function NestPage() {
           <div className="small muted">
             数据保存在本机浏览器的 localStorage（roommate-life: 前缀）。刷新后保留；换浏览器或清除站点数据会丢失。
           </div>
+          <BackupPanel />
+          <div className="divider" />
           <div className="row">
             <button type="button" className="btn btn--sm" onClick={() => setConfirmReset(true)}>
               <IconReset size={14} /> 重置演示数据

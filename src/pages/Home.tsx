@@ -303,11 +303,9 @@ export default function HomePage() {
           <div className="card__title">
             <IconCheck /> 待我确认
           </div>
-          <span className="card__hint">只含收款、换班、公约三类确认</span>
-        </div>
-        <div className="small muted" style={{ marginBottom: 10 }}>
-          这里只统计需要你确认的事项；我的待付款看上方金额卡，我的值日看「今日值日」。侧栏数字则是各页全部待办（含付款与值日）。
-        </div>
+        <div className="card__hint">只含收款、换班、公约三类确认</div>
+      </div>
+      {/* 口径说明：侧栏数字为各页全部待办；本卡只统计需我确认事项。不再重复长文说明 */}
 
         {toConfirm.length === 0 && incomingSwaps.length === 0 && !pactNeedsMe ? (
           <Empty>没有等待你确认的事项。</Empty>
@@ -502,6 +500,8 @@ export default function HomePage() {
         ) : null}
       </div>
 
+      <DemoPaths navigate={navigate} />
+
       {formOpen ? <ExpenseFormModal onClose={() => setFormOpen(false)} /> : null}
 
       {completeTask ? (
@@ -565,5 +565,66 @@ function CompleteTaskModal({ task, onClose }: { task: ChoreTask; onClose: () => 
         <IconDoc size={13} /> 过期任务保留原负责人，不会自动转给下一位。
       </div>
     </Modal>
+  );
+}
+
+/** 三条三分钟演示路径：只做页面跳转引导，不自动改动任何业务数据 */
+function DemoPaths({ navigate }: { navigate: (to: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const paths: { title: string; steps: string[]; to: string; cta: string }[] = [
+    {
+      title: '月末算账',
+      steps: ['账本 → 月度概览，选本月', '看分类与各人承担', '复制纯文本摘要发给室友（自行粘贴）'],
+      to: '/ledger',
+      cta: '去账本',
+    },
+    {
+      title: '补货后补记',
+      steps: ['物品 → 完成一次补货（或选历史补货）', '在补货记录点「补记费用」', '确认金额与参与人后提交'],
+      to: '/supplies',
+      cta: '去物品',
+    },
+    {
+      title: '调整下周值日',
+      steps: ['值日 → 规则卡点「调整」', '预览影响范围，最早次日生效', '或直接和室友发起换班'],
+      to: '/chores',
+      cta: '去值日',
+    },
+  ];
+  return (
+    <div className="card">
+      <div className="card__head">
+        <div className="card__title">三分钟演示路径</div>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          {open ? '收起' : '展开'}
+        </button>
+      </div>
+      {open ? (
+        <div className="list">
+          {paths.map((path, index) => (
+            <div className="item" key={path.title}>
+              <span className="avatar">{index + 1}</span>
+              <div className="item__main">
+                <div className="item__title">{path.title}</div>
+                <div className="item__meta">{path.steps.join(' → ')}</div>
+              </div>
+              <div className="item__side">
+                <button type="button" className="btn btn--sm" onClick={() => navigate(path.to)}>
+                  {path.cta}
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="tiny muted">路径只做页面引导，不会自动修改或伪造任何数据。</div>
+        </div>
+      ) : (
+        <div className="small muted">按步骤体验：月末算账 · 补货后补记 · 调整下周值日。</div>
+      )}
+    </div>
   );
 }
