@@ -18,6 +18,7 @@ import {
   canCancelClaim,
   canClaim,
   canCompleteRestock,
+  resolveStockInput,
   sortByUrgency,
   supplyRuleHint,
   supplyStatus,
@@ -43,7 +44,24 @@ export default function SuppliesPage() {
   );
   const [linkRestock, setLinkRestock] = useState<LinkDraft | null>(null);
   const [viewExpenseId, setViewExpenseId] = useState<string | null>(null);
-  const [stockDraft, setStockDraft] = useState<Record<string, string>>({});
+  /**
+   * 草稿记录「输入时的余量」作为基线：
+   * 只有当物品余量仍是基线值时草稿才生效，
+   * 这样补货完成、导入备份等业务更新后输入框自动显示最新余量，
+   * 又不会无条件抹掉用户尚未提交的编辑。
+   */
+  const [stockDraft, setStockDraft] = useState<Record<string, { value: string; base: number }>>({});
+
+  /** 取草稿值（仅当基线仍是当前余量），否则显示真实余量 */
+  const stockValue = (item: SupplyItem) => resolveStockInput(stockDraft[item.id], item.stock);
+
+  const clearDraft = (itemId: string) =>
+    setStockDraft((prev) => {
+      if (!prev[itemId]) return prev;
+      const next = { ...prev };
+      delete next[itemId];
+      return next;
+    });
 
   useEffect(() => {
     const flag = (location.state as { openItemForm?: boolean } | null)?.openItemForm;
@@ -69,20 +87,22 @@ export default function SuppliesPage() {
       '补货已完成，余量已恢复',
     );
     if (!okDone) return;
+    clearDraft(item.id);
     const fresh = getSnapshot().state;
     const record = fresh?.restocks.find((r) => r.itemId === item.id && !r.expenseId);
     setRestockDone({ item, restockId: record?.id ?? null });
   }
 
   function saveStock(item: SupplyItem) {
-    const raw = stockDraft[item.id] ?? String(item.stock);
+    const raw = stockValue(item);
     const value = Number(raw);
     if (!Number.isInteger(value) || value < 0) {
       run({ type: 'supply/setStock', itemId: item.id, stock: -1 });
       return;
     }
     const okDone = run({ type: 'supply/setStock', itemId: item.id, stock: value }, '余量已更新');
-    if (okDone) setStockDraft((prev) => ({ ...prev, [item.id]: String(value) }));
+    // 保存成功后清除草稿，输入框回到真实余量，旧值不会覆盖新结果
+    if (okDone) clearDraft(item.id);
   }
 
   return (
@@ -147,13 +167,21 @@ export default function SuppliesPage() {
                     <Input
                       inputMode="numeric"
                       style={{ width: 76 }}
-                      value={stockDraft[item.id] ?? String(item.stock)}
+                      value={stockValue(item)}
                       onChange={(e) =>
-                        setStockDraft((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        setStockDraft((prev) => ({
+                          ...prev,
+                          [item.id]: { value: e.target.value, base: item.stock },
+                        }))
                       }
                       aria-label={`${item.name} 余量`}
                     />
-                    <button type="button" className="btn btn--sm" onClick={() => saveStock(item)}>
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      disabled={stockValue(item).trim() === String(item.stock)}
+                      onClick={() => saveStock(item)}
+                    >
                       更新余量
                     </button>
                   </div>

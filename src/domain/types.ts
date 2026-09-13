@@ -88,6 +88,7 @@ export interface Expense {
 /** 单份份额的结算状态（对外展示用） */
 export type ShareStatus =
   | 'own' // 垫付人本人承担的份额，无需结算
+  | 'zero' // 承担 0 元，无需支付
   | 'unpaid' // 待付款
   | 'awaiting_confirm' // 已标记付款，待收款人确认
   | 'settled'; // 已结清

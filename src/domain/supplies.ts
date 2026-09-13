@@ -19,9 +19,9 @@ export function supplyStatusLabel(status: SupplyStatus): string {
   return '充足';
 }
 
-/** 规则说明文案，保证各页面一致 */
+/** 规则说明文案，保证各页面一致（实现为「不超过满量 50%」） */
 export function supplyRuleHint(): string {
-  return `余量为 0 视为「已用完」，未满且不足满量一半视为「快用完」，其余为「充足」；补货后会恢复到满量。`;
+  return '余量为 0 视为「已用完」，未满且余量不超过满量 50% 视为「快用完」，其余为「充足」；补货后会恢复到满量。';
 }
 
 export function needsRestock(item: SupplyItem): boolean {
@@ -40,6 +40,21 @@ export function canCancelClaim(item: SupplyItem, memberId: MemberId): boolean {
 
 export function canCompleteRestock(item: SupplyItem, memberId: MemberId): boolean {
   return item.claim?.memberId === memberId;
+}
+
+/**
+ * 余量输入框草稿：记录「开始编辑时的余量」作为基线。
+ * 只有余量仍是基线值时草稿才生效——补货完成、导入备份等业务更新后
+ * 输入框自动回到最新余量；用户尚未提交的编辑不会被无条件抹掉。
+ */
+export interface StockDraft {
+  value: string;
+  base: number;
+}
+
+export function resolveStockInput(draft: StockDraft | undefined, currentStock: number): string {
+  if (draft && draft.base === currentStock) return draft.value;
+  return String(currentStock);
 }
 
 export function sortByUrgency(items: SupplyItem[]): SupplyItem[] {

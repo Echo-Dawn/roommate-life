@@ -25,6 +25,7 @@ export function Avatar({ text, large = false }: { text: string; large?: boolean 
 
 const SHARE_LABEL: Record<ShareStatus, string> = {
   own: '本人承担',
+  zero: '无需支付',
   unpaid: '待付款',
   awaiting_confirm: '待收款确认',
   settled: '已结清',
@@ -32,6 +33,7 @@ const SHARE_LABEL: Record<ShareStatus, string> = {
 
 const SHARE_CLASS: Record<ShareStatus, string> = {
   own: 'badge--own',
+  zero: 'badge--own',
   unpaid: 'badge--unpaid',
   awaiting_confirm: 'badge--awaiting',
   settled: 'badge--settled',

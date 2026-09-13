@@ -33,6 +33,7 @@ const MINE_FILTERS: { value: MySettleFilter; label: string }[] = [
   { value: 'awaiting_confirm', label: MINE_FILTER_LABELS.awaiting_confirm },
   { value: 'receivable', label: MINE_FILTER_LABELS.receivable },
   { value: 'settled', label: MINE_FILTER_LABELS.settled },
+  { value: 'voided', label: MINE_FILTER_LABELS.voided },
 ];
 
 export default function LedgerPage() {

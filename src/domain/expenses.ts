@@ -13,11 +13,23 @@ import type {
  * 垫付人本人承担的份额不产生「向自己付款」，标记为 own。
  */
 
+/**
+ * 份额状态。
+ * 承担 0 元的份额为 zero：不产生付款、收款确认、异议，也不计入未结清。
+ * 注意这里不写 paidAt / confirmedAt —— 没有真实付款行为就不能伪造时间。
+ */
 export function shareStatus(expense: Expense, share: Share): ShareStatus {
   if (share.memberId === expense.payerId) return 'own';
+  if (share.amountCents <= 0) return 'zero';
   if (share.confirmedAt) return 'settled';
   if (share.paidAt) return 'awaiting_confirm';
   return 'unpaid';
+}
+
+/** 是否参与结算：本人份额与 0 元份额都不需要收付款 */
+export function isSettleable(expense: Expense, share: Share): boolean {
+  const status = shareStatus(expense, share);
+  return status === 'unpaid' || status === 'awaiting_confirm';
 }
 
 /** 异议只在未结清时生效；已结清后异议标记仅作记录 */
@@ -36,25 +48,20 @@ export function buildShareView(
   const isOwner = currentMemberId === share.memberId;
   const isPayer = currentMemberId === expense.payerId;
   const open = !expense.voided && !disputed && status !== 'settled';
+  // 0 元份额不产生任何结算动作，也不允许提出异议
+  const actionable = open && status !== 'zero';
 
   return {
     expense,
     share,
     status,
     disputed,
-    canMarkPaid: open && status === 'unpaid' && isOwner,
-    canConfirm: open && status === 'awaiting_confirm' && isPayer,
-    canRaiseDispute:
-      !expense.voided &&
-      !share.dispute &&
-      status !== 'settled' &&
-      status !== 'own' &&
-      (isOwner || isPayer),
+    canMarkPaid: actionable && status === 'unpaid' && isOwner,
+    canConfirm: actionable && status === 'awaiting_confirm' && isPayer,
+    canRaiseDispute: actionable && !share.dispute && status !== 'own' && (isOwner || isPayer),
     canWithdrawDispute:
-      !expense.voided &&
-      Boolean(share.dispute) &&
-      status !== 'settled' &&
-      share.dispute?.raisedBy === currentMemberId,
+      !expense.voided && Boolean(share.dispute) && status !== 'settled' && status !== 'zero'
+        && share.dispute?.raisedBy === currentMemberId,
   };
 }
 
@@ -106,8 +113,9 @@ export function summarizeFor(state: AppState, memberId: MemberId): SettlementSum
           if (disputed) result.payableDisputedCents += share.amountCents;
         }
       }
-      if (expense.payerId === memberId && status !== 'own') {
-        if (status !== 'settled') {
+      if (expense.payerId === memberId && status !== 'own' && status !== 'zero') {
+        // 未结清 = 待付款 + 已标记付款待确认；0 元份额不计入
+        if (status === 'unpaid' || status === 'awaiting_confirm') {
           result.receivableCents += share.amountCents;
           if (status === 'awaiting_confirm') result.awaitingConfirmCents += share.amountCents;
           if (disputed) result.receivableDisputedCents += share.amountCents;
@@ -128,6 +136,7 @@ export type MySettleFilter =
   | 'awaiting_confirm'
   | 'settled'
   | 'receivable'
+  | 'voided'
   | 'none';
 
 export interface ExpenseFilter {
@@ -142,14 +151,17 @@ export const DEFAULT_EXPENSE_FILTER: ExpenseFilter = {
   mine: 'all',
 };
 
-/** 收款视角：本人垫付，且至少还有一位其他成员未结清 */
+/** 收款视角：本人垫付，且至少还有一位其他成员未结清（0 元份额不算欠） */
 export function hasUnsettledForPayer(expense: Expense, memberId: MemberId): boolean {
+  if (expense.voided) return false;
   if (expense.payerId !== memberId) return false;
-  return expense.shares.some(
-    (s) => s.memberId !== memberId && shareStatus(expense, s) !== 'settled',
-  );
+  return expense.shares.some((s) => s.memberId !== memberId && isSettleable(expense, s));
 }
 
+/**
+ * 筛选。作废账单只在「全部账单」和明确的「已作废」历史视图出现，
+ * 不进入待付款 / 待确认 / 待收款 / 待办候选。
+ */
 export function matchesFilter(
   expense: Expense,
   filter: ExpenseFilter,
@@ -157,14 +169,15 @@ export function matchesFilter(
 ): boolean {
   if (filter.month !== 'all' && !expense.date.startsWith(filter.month)) return false;
   if (filter.category !== 'all' && expense.category !== filter.category) return false;
-  if (filter.mine !== 'all') {
-    if (filter.mine === 'receivable') {
-      return hasUnsettledForPayer(expense, memberId);
-    }
-    const share = expense.shares.find((s) => s.memberId === memberId);
-    const status = share ? shareStatus(expense, share) : 'none';
-    if (status !== filter.mine) return false;
+  if (filter.mine === 'all') return true;
+  if (filter.mine === 'voided') return expense.voided;
+  if (expense.voided) return false;
+  if (filter.mine === 'receivable') {
+    return hasUnsettledForPayer(expense, memberId);
   }
+  const share = expense.shares.find((s) => s.memberId === memberId);
+  const status = share ? shareStatus(expense, share) : 'none';
+  if (status !== filter.mine) return false;
   return true;
 }
 
@@ -174,6 +187,7 @@ export const MINE_FILTER_LABELS: Record<MySettleFilter, string> = {
   awaiting_confirm: '我的待确认',
   settled: '我的已结清',
   receivable: '我垫付待收款',
+  voided: '已作废（仅历史）',
   none: '未参与分摊',
 };
 
